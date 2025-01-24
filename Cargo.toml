@@ -1,0 +1,20 @@
+[package]
+name = "tentris-license-aggregator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.95"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+toml = "0.8.19"
+clap = { version = "4.5.26", features = ["derive"] }
+
+cargo-about = "0.6.6"
+krates = "0.17.5"
+spdx = "0.10.8"
+reqwest = "0.12.12"
+
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.135"
+json_nav = { git = "https://github.com/liss-h/json_nav", rev = "88e2b0448043a51b3ecb9a97b3a2a050ab328df8" }
