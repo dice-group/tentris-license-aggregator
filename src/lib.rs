@@ -3,11 +3,12 @@ use cargo_about::{
     licenses::{Gatherer, KrateLicense, LicenseInfo},
     Krates,
 };
-use krates::{LockOptions, Utf8Path};
+use krates::{LockOptions};
 use serde::{Deserialize, Serialize};
 use spdx::{expression::ExprNode, Expression};
 use std::sync::Arc;
 
+pub use krates::{Utf8Path, Utf8PathBuf};
 pub use cargo_about::licenses::{config::Config, LicenseStore};
 
 #[derive(Serialize, Deserialize)]
@@ -30,14 +31,14 @@ pub fn license_store_from_cache() -> anyhow::Result<Arc<LicenseStore>> {
     Ok(Arc::new(cargo_about::licenses::store_from_cache()?))
 }
 
-pub fn get_all_licenses(
-    cargo_toml: &Utf8Path,
+pub fn get_all_licenses<P: AsRef<Utf8Path>>(
+    cargo_toml: P,
     features: Vec<String>,
     license_store: Arc<LicenseStore>,
     config: &Config,
 ) -> anyhow::Result<Vec<Package>> {
     let krates = cargo_about::get_all_crates(
-        cargo_toml,
+        cargo_toml.as_ref(),
         false,
         false,
         features,
