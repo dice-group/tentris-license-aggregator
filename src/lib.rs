@@ -8,8 +8,7 @@ use serde::{Deserialize, Serialize};
 use spdx::{expression::ExprNode, Expression};
 use std::sync::Arc;
 
-pub use cargo_about::licenses::LicenseStore;
-pub use cargo_about::licenses::config::Config;
+pub use cargo_about::licenses::{config::Config, LicenseStore};
 
 #[derive(Serialize, Deserialize)]
 pub struct LicenseFile {
@@ -31,10 +30,12 @@ pub fn license_store_from_cache() -> anyhow::Result<Arc<LicenseStore>> {
     Ok(Arc::new(cargo_about::licenses::store_from_cache()?))
 }
 
-pub fn get_all_licenses(cargo_toml: &Utf8Path,
-                        features: Vec<String>,
-                        license_store: Arc<LicenseStore>,
-                        config: &Config) -> anyhow::Result<Vec<Package>> {
+pub fn get_all_licenses(
+    cargo_toml: &Utf8Path,
+    features: Vec<String>,
+    license_store: Arc<LicenseStore>,
+    config: &Config,
+) -> anyhow::Result<Vec<Package>> {
     let krates = cargo_about::get_all_crates(
         cargo_toml,
         false,
@@ -50,10 +51,7 @@ pub fn get_all_licenses(cargo_toml: &Utf8Path,
     collect_krate_licenses(&krates, license_store, config)
 }
 
-pub fn augment_licenses(
-    licenses: &mut [Package],
-    license_store: Arc<LicenseStore>,
-) -> anyhow::Result<()> {
+pub fn augment_licenses(licenses: &mut [Package], license_store: Arc<LicenseStore>) -> anyhow::Result<()> {
     for pkg in licenses {
         for l in &mut pkg.license_files {
             if l.spdx.is_none() {
