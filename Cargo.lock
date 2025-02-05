@@ -2062,7 +2062,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "cargo-about",
- "clap",
  "krates",
  "reqwest",
  "serde",

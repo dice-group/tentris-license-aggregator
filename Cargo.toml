@@ -8,7 +8,6 @@ anyhow = "1.0.95"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 toml = "0.8.19"
-clap = { version = "4.5.26", features = ["derive"] }
 
 cargo-about = "0.6.6"
 krates = "0.17.5"
