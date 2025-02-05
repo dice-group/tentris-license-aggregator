@@ -1088,14 +1088,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "json_nav"
-version = "0.1.0"
-source = "git+https://github.com/liss-h/json_nav?rev=88e2b0448043a51b3ecb9a97b3a2a050ab328df8#88e2b0448043a51b3ecb9a97b3a2a050ab328df8"
-dependencies = [
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "krates"
 version = "0.17.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2071,7 +2063,6 @@ dependencies = [
  "anyhow",
  "cargo-about",
  "clap",
- "json_nav",
  "krates",
  "reqwest",
  "serde",

@@ -4,11 +4,10 @@ use cargo_about::{
     Krates,
 };
 use clap::Parser;
-use json_nav::json_nav;
 use krates::{LockOptions, Utf8Path, Utf8PathBuf};
 use serde::{Deserialize, Serialize};
 use spdx::{expression::ExprNode, Expression};
-use std::{fs::File, io::BufReader, process::exit, sync::Arc};
+use std::{process::exit, sync::Arc};
 use cargo_about::licenses::LicenseStore;
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::EnvFilter;
@@ -16,6 +15,7 @@ use tracing_subscriber::EnvFilter;
 #[derive(Parser)]
 struct Opts {
     crate_manifest_dir: Utf8PathBuf,
+    cpp_thirdparty_json: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -34,7 +34,7 @@ struct Package {
     license_files: Vec<LicenseFile>,
 }
 
-fn run(Opts { crate_manifest_dir }: Opts) -> anyhow::Result<()> {
+fn run(Opts { crate_manifest_dir, cpp_thirdparty_json }: Opts) -> anyhow::Result<()> {
     let config = read_config()?;
 
     let krates = get_all_crates(&crate_manifest_dir, &config).context("Unable to get crates")?;
@@ -43,7 +43,7 @@ fn run(Opts { crate_manifest_dir }: Opts) -> anyhow::Result<()> {
 
     let mut packages = vec![];
     collect_rust_licenses(&config, s.clone(), &krates, &mut packages).context("Unable to collect rust licenses")?;
-    collect_cpp_licenses(s.clone(), &krates, &mut packages).context("Unable to collect cpp licenses")?;
+    augment_cpp_licenses(&cpp_thirdparty_json, s.clone(), &mut packages).context("Unable to augment cpp licenses")?;
 
     minimize(&config, &mut packages)?;
 
@@ -156,42 +156,26 @@ fn collect_rust_licenses(config: &Config, license_store: Arc<LicenseStore>, krat
     Ok(())
 }
 
-fn collect_cpp_licenses(license_store: Arc<LicenseStore>, krates: &Krates, thirdparty: &mut Vec<Package>) -> anyhow::Result<()> {
-    let tentris_crates = krates.krates().filter_map(|k| {
-        let thirdparty_name = json_nav! {
-            k.metadata => "tentris" => "thirdparty-file-name"; as str
-        }
-        .ok()?;
+fn augment_cpp_licenses(thirdparty_file_json: &str, license_store: Arc<LicenseStore>, thirdparty: &mut Vec<Package>) -> anyhow::Result<()> {
+    let mut thirdparty_packages: Vec<Package> =
+        serde_json::from_str(thirdparty_file_json).context("Unable to read and parse thirdparty file")?;
 
-        Some((k, thirdparty_name.to_owned()))
-    });
+    for pkg in &mut thirdparty_packages {
+        for l in &mut pkg.license_files {
+            if l.spdx.is_none() {
+                let text = l.text.as_str().into();
+                let analysis = license_store.analyze(&text);
 
-    for (k, thirdparty_file_name) in tentris_crates {
-        let manifest_dir = k.manifest_path.parent().context("Unable to determine tentris_sys manifest dir")?;
-
-        let thirdparty_path = manifest_dir.join(thirdparty_file_name);
-
-        let rdr = BufReader::new(File::open(thirdparty_path).context("Unable to read thirdparty file")?);
-        let mut thirdparty_packages: Vec<Package> =
-            serde_json::from_reader(rdr).context("Unable to read and parse thirdparty file")?;
-
-        for pkg in &mut thirdparty_packages {
-            for l in &mut pkg.license_files {
-                if l.spdx.is_none() {
-                    let text = l.text.as_str().into();
-                    let analysis = license_store.analyze(&text);
-
-                    if analysis.score < 0.9 {
-                        tracing::warn!("Low confidence of {} on C++ license SPDX detection for '{} {}'", analysis.score, pkg.package_name, pkg.package_version);
-                    }
-
-                    l.spdx = Some(analysis.name.to_owned());
+                if analysis.score < 0.9 {
+                    tracing::warn!("Low confidence of {} on C++ license SPDX detection for '{} {}'", analysis.score, pkg.package_name, pkg.package_version);
                 }
+
+                l.spdx = Some(analysis.name.to_owned());
             }
         }
-
-        thirdparty.extend(thirdparty_packages);
     }
+
+    thirdparty.extend(thirdparty_packages);
 
     Ok(())
 }
