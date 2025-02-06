@@ -13,24 +13,34 @@ pub use cargo_about::licenses::{config::Config, LicenseStore};
 
 #[derive(Serialize, Deserialize)]
 pub struct LicenseFile {
+    /// Filename of the license file
     pub name: String,
+    /// If known, the SPDX identifier of the license
     pub spdx: Option<String>,
+    /// The content of the license file
     pub text: String,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct Package {
+    /// Name of the package
     pub package_name: String,
+    /// Version of the package
     pub package_version: String,
+    /// Url of the package (this might be the repository or the crates.io page or a homepage)
     pub package_url: Option<String>,
+    /// If known, the combined SPDX expression for all licenses of the package (e.g. MIT OR Apache-2.0)
     pub license_spdx: Option<String>,
+    /// All the license files that couldd be found for the package
     pub license_files: Vec<LicenseFile>,
 }
 
+/// Create a license store from an internal cache
 pub fn license_store_from_cache() -> anyhow::Result<Arc<LicenseStore>> {
     Ok(Arc::new(cargo_about::licenses::store_from_cache()?))
 }
 
+/// Retrieve all rust packages and their licenses based on the Cargo.toml at the given path
 pub fn get_all_licenses<P: AsRef<Utf8Path>>(
     cargo_toml: P,
     features: Vec<String>,
@@ -52,6 +62,8 @@ pub fn get_all_licenses<P: AsRef<Utf8Path>>(
     collect_krate_licenses(&krates, license_store, config)
 }
 
+/// If the SPDX identifier of individual licenses in the packages are unknown
+/// use the license store to analyze the license contents to determine their SPDX.
 pub fn augment_licenses(licenses: &mut [Package], license_store: Arc<LicenseStore>) -> anyhow::Result<()> {
     for pkg in licenses {
         for l in &mut pkg.license_files {
@@ -76,6 +88,10 @@ pub fn augment_licenses(licenses: &mut [Package], license_store: Arc<LicenseStor
     Ok(())
 }
 
+/// Minimize the license requirements for the packages, based on preferences in the configuration
+///
+/// # Example
+/// `MIT OR Apache-2.0` may be minimized to just `MIT`
 pub fn minimize_requirements(packages: &mut [Package], config: &Config) -> anyhow::Result<()> {
     for p in packages {
         if let Some(lspdx) = &p.license_spdx {
@@ -123,11 +139,11 @@ fn collect_krate_licenses(
                 let n_spdx_licenses = expr.iter().filter(|node| matches!(node, ExprNode::Req(_))).count();
 
                 if n_spdx_licenses != license_files.len() {
-                    tracing::warn!("Mismatch between license SPDX and number of license files found in crate '{}'. SPDX specifies {} but found {}", krate, n_spdx_licenses, license_files.len());
+                    tracing::warn!("Mismatch between license SPDX and number of license files found in crate '{krate}'. SPDX specifies {n_spdx_licenses} but found {}", license_files.len());
                 }
             },
             LicenseInfo::Unknown => {
-                tracing::warn!("crate '{}' has unknown license", krate);
+                tracing::warn!("crate '{krate}' has unknown license");
             },
             LicenseInfo::Ignore => {
                 anyhow::bail!("Ignoring a crate shouldd not happen");
@@ -145,12 +161,12 @@ fn collect_krate_licenses(
             let name = license_path.file_name().unwrap().to_owned();
             match std::fs::read_to_string(&license_path) {
                 Ok(text) => lfiles.push(LicenseFile { name, spdx: Some(l.license_expr.to_string()), text }),
-                Err(e) => tracing::warn!("Unable to read license file {}: {e:#}", license_path),
+                Err(e) => tracing::warn!("Unable to read license file {license_path}: {e:#}"),
             }
         }
 
         if lfiles.is_empty() {
-            tracing::warn!("Unable to find any license files for {}", krate);
+            tracing::warn!("Unable to find any license files for {krate}");
         }
 
         let package = Package {
