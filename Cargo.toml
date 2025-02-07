@@ -5,7 +5,7 @@ edition = "2021"
 keywords = ["build-script", "licenses", "spdx"]
 repository = "https://github.com/dice-group/tentris-license-aggregator"
 readme = "README.md"
-license = "MIT OR APACHE-2.0"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 anyhow = "1.0.95"
