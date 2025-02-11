@@ -3,13 +3,14 @@ use cargo_about::{
     licenses::{Gatherer, KrateLicense, LicenseInfo},
     Krates,
 };
-use krates::{LockOptions};
+use krates::LockOptions;
 use serde::{Deserialize, Serialize};
 use spdx::{expression::ExprNode, Expression};
 use std::sync::Arc;
 
-pub use krates::{Utf8Path, Utf8PathBuf};
+use cargo_about::licenses::LicenseFileKind;
 pub use cargo_about::licenses::{config::Config, LicenseStore};
+pub use krates::{Utf8Path, Utf8PathBuf};
 
 #[derive(Serialize, Deserialize)]
 pub struct LicenseFile {
@@ -140,11 +141,14 @@ fn collect_krate_licenses(
 
         match &lic_info {
             LicenseInfo::Expr(expr) => {
-                let n_spdx_licenses = expr.iter().filter(|node| matches!(node, ExprNode::Req(_))).count();
-                let clarified = config.crates.get(&krate.name).is_some_and(|crate_conf| crate_conf.clarify.is_some());
+                let licenses_in_top_level_expr = licenses_in_expr(expr);
+                let licenses_in_files: usize = license_files
+                    .iter()
+                    .map(|file| licenses_in_expr(&file.license_expr))
+                    .sum();
 
-                if !clarified && n_spdx_licenses != license_files.len() {
-                    tracing::warn!("Mismatch between license SPDX and number of license files found in crate '{krate}'. SPDX specifies {n_spdx_licenses} but found {}", license_files.len());
+                if licenses_in_top_level_expr != licenses_in_files {
+                    tracing::warn!("Mismatch between license SPDX and number of licenses found in files for crate '{krate}'. SPDX specifies {licenses_in_top_level_expr} but found {licenses_in_files} in files");
                 }
             },
             LicenseInfo::Unknown => {
@@ -157,16 +161,25 @@ fn collect_krate_licenses(
 
         let mut lfiles = vec![];
         for l in license_files {
-            let license_path = if l.path.is_absolute() {
-                l.path.to_owned()
-            } else {
-                krate.manifest_path.parent().unwrap().join(l.path)
-            };
+            let name = l.path.file_name().unwrap().to_owned();
 
-            let name = license_path.file_name().unwrap().to_owned();
-            match std::fs::read_to_string(&license_path) {
-                Ok(text) => lfiles.push(LicenseFile { name, spdx: Some(l.license_expr.to_string()), text }),
-                Err(e) => tracing::warn!("Unable to read license file {license_path}: {e:#}"),
+            match l.kind {
+                LicenseFileKind::Text(text) | LicenseFileKind::AddendumText(text, _) => {
+                    lfiles.push(LicenseFile { name, spdx: Some(l.license_expr.to_string()), text })
+                },
+                LicenseFileKind::Header => {
+                    let license_path = if l.path.is_absolute() {
+                        l.path.to_owned()
+                    } else {
+                        krate.manifest_path.parent().unwrap().join(l.path)
+                    };
+
+                    let name = license_path.file_name().unwrap().to_owned();
+                    match std::fs::read_to_string(&license_path) {
+                        Ok(text) => lfiles.push(LicenseFile { name, spdx: Some(l.license_expr.to_string()), text }),
+                        Err(e) => tracing::warn!("Unable to read license file {license_path}: {e:#}"),
+                    }
+                },
             }
         }
 
@@ -190,4 +203,8 @@ fn collect_krate_licenses(
     }
 
     Ok(packages)
+}
+
+fn licenses_in_expr(expr: &Expression) -> usize {
+    expr.iter().filter(|node| matches!(node, ExprNode::Req(_))).count()
 }
