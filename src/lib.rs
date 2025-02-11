@@ -141,8 +141,9 @@ fn collect_krate_licenses(
         match &lic_info {
             LicenseInfo::Expr(expr) => {
                 let n_spdx_licenses = expr.iter().filter(|node| matches!(node, ExprNode::Req(_))).count();
+                let clarified = config.crates.get(&krate.name).is_some_and(|crate_conf| crate_conf.clarify.is_some());
 
-                if n_spdx_licenses != license_files.len() {
+                if !clarified && n_spdx_licenses != license_files.len() {
                     tracing::warn!("Mismatch between license SPDX and number of license files found in crate '{krate}'. SPDX specifies {n_spdx_licenses} but found {}", license_files.len());
                 }
             },
@@ -150,7 +151,7 @@ fn collect_krate_licenses(
                 tracing::warn!("crate '{krate}' has unknown license");
             },
             LicenseInfo::Ignore => {
-                anyhow::bail!("Ignoring a crate shouldd not happen");
+                anyhow::bail!("Ignoring a crate should not happen");
             },
         }
 
