@@ -1,0 +1,17 @@
+[package]
+name = "tentris-license-aggregator"
+version = "0.1.0"
+edition = "2021"
+keywords = ["build-script", "licenses", "spdx"]
+repository = "https://github.com/dice-group/tentris-license-aggregator"
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+anyhow = "1.0.95"
+tracing = "0.1.41"
+cargo-about = "0.6.6"
+krates = "0.17.5"
+spdx = "0.10.8"
+reqwest = { version = "0.12.12", default-features = false, features = ["blocking", "rustls-tls"] }
+serde = { version = "1.0.217", features = ["derive"] }
