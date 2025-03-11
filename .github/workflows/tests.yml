@@ -1,0 +1,21 @@
+name: Run Tests
+on: [ pull_request ]
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    strategy:
+      fail-fast: false
+    runs-on: ubuntu-22.04
+    name: Tests
+    steps:
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - uses: actions/checkout@v4
+
+      - name: Run Tests
+        run: |
+          cargo test
