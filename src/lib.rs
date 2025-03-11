@@ -109,7 +109,7 @@ pub struct LicenseFile {
     /// Filename of the license file
     pub name: String,
     /// If known, the SPDX identifier of the license
-    #[serde(deserialize_with = "deserialize_expression")]
+    #[serde(default, deserialize_with = "deserialize_expression")]
     pub spdx: Option<Expression>,
     /// The content of the license file
     pub text: String,
@@ -124,7 +124,7 @@ pub struct Package {
     /// Url of the package (this might be the repository or the crates.io page or a homepage)
     pub package_url: Option<String>,
     /// If known, the combined SPDX expression for all licenses of the package (e.g. MIT OR Apache-2.0)
-    #[serde(deserialize_with = "deserialize_expression")]
+    #[serde(default, deserialize_with = "deserialize_expression")]
     pub license_spdx: Option<Expression>,
     /// All the license files that couldd be found for the package
     pub license_files: Vec<LicenseFile>,
@@ -416,5 +416,12 @@ mod tests {
         let json = r#"{ "name": "test", "spdx": "MIT", "text": "AAA"  }"#;
         let x: LicenseFile = serde_json::from_str(json).unwrap();
         assert_eq!(format!("{}", x.spdx.unwrap()), "MIT");
+    }
+
+    #[test]
+    fn missing_spdx() {
+        let json = r#"{ "name": "test", "text": "AAA"  }"#;
+        let x: LicenseFile = serde_json::from_str(json).unwrap();
+        assert!(x.spdx.is_none());
     }
 }
