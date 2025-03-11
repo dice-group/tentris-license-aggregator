@@ -97,11 +97,19 @@ impl Serialize for Expression {
     }
 }
 
+fn deserialize_expression<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Expression>, D::Error> {
+    match Option::<Expression>::deserialize(deserializer) {
+        Err(_) => Ok(None),
+        Ok(opt) => Ok(opt),
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct LicenseFile {
     /// Filename of the license file
     pub name: String,
     /// If known, the SPDX identifier of the license
+    #[serde(deserialize_with = "deserialize_expression")]
     pub spdx: Option<Expression>,
     /// The content of the license file
     pub text: String,
@@ -116,6 +124,7 @@ pub struct Package {
     /// Url of the package (this might be the repository or the crates.io page or a homepage)
     pub package_url: Option<String>,
     /// If known, the combined SPDX expression for all licenses of the package (e.g. MIT OR Apache-2.0)
+    #[serde(deserialize_with = "deserialize_expression")]
     pub license_spdx: Option<Expression>,
     /// All the license files that couldd be found for the package
     pub license_files: Vec<LicenseFile>,
@@ -389,4 +398,23 @@ fn licenses_in_expr(expr: &spdx::Expression) -> usize {
 
 fn licenses_in_expr_opt(expr: Option<&Expression>) -> usize {
     expr.map(|expr| licenses_in_expr(&expr.0)).unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_garbage_spdx() {
+        let json = r#"{ "name": "test", "spdx": "garbage", "text": "AAA"  }"#;
+        let x: LicenseFile = serde_json::from_str(json).unwrap();
+        assert!(x.spdx.is_none());
+    }
+
+    #[test]
+    fn test_non_garbage_spdx() {
+        let json = r#"{ "name": "test", "spdx": "MIT", "text": "AAA"  }"#;
+        let x: LicenseFile = serde_json::from_str(json).unwrap();
+        assert_eq!(format!("{}", x.spdx.unwrap()), "MIT");
+    }
 }
