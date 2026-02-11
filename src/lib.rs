@@ -185,7 +185,11 @@ pub fn augment_licenses(
                 );
             }
 
-            for invalid_clarification in clarify.files.iter().filter(|c| !clarification_for_existing_license(c, &pkg.license_files)) {
+            for invalid_clarification in clarify
+                .files
+                .iter()
+                .filter(|c| !clarification_for_existing_license(c, &pkg.license_files))
+            {
                 tracing::error!(
                     "Found clarification for file {} that does not exist",
                     invalid_clarification.path,
@@ -298,6 +302,8 @@ fn select_file_license_clarification<'c>(
     clarification.files.iter().find(|f| f.path == license_name)
 }
 
+/// Return true iff the given clarification is a clarification for
+/// any of the given license files
 fn clarification_for_existing_license(
     file_clarification: &ClarificationFile,
     licenses: &[LicenseFile],
