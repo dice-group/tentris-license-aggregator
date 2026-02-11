@@ -97,9 +97,7 @@ impl Serialize for Expression {
     }
 }
 
-fn deserialize_expression<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<Expression>, D::Error> {
+fn deserialize_expression<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Expression>, D::Error> {
     match Option::<Expression>::deserialize(deserializer) {
         Err(_) => Ok(None),
         Ok(opt) => Ok(opt),
@@ -150,11 +148,7 @@ pub fn get_all_licenses<P: AsRef<Utf8Path>>(
         false,
         features,
         false,
-        LockOptions {
-            offline: false,
-            frozen: false,
-            locked: true,
-        },
+        LockOptions { offline: false, frozen: false, locked: true },
         config,
         &[],
     )
@@ -259,7 +253,7 @@ pub fn augment_licenses(
                     }
 
                     l.spdx = Some(file_spdx)
-                }
+                },
                 Err(e) => tracing::error!("License analysis yielded invalid license: {e}"),
             }
         }
@@ -288,10 +282,7 @@ fn spdx_any_in_common(expr1: &Expression, expr2: &Expression) -> bool {
         .any(|req1| expr2.requirements().any(|req2| req1 == req2))
 }
 
-fn select_clarification<'cfg>(
-    package_name: &str,
-    config: &'cfg Config,
-) -> Option<&'cfg Clarification> {
+fn select_clarification<'cfg>(package_name: &str, config: &'cfg Config) -> Option<&'cfg Clarification> {
     config.crates.get(package_name)?.clarify.as_ref()
 }
 
@@ -304,10 +295,7 @@ fn select_file_license_clarification<'c>(
 
 /// Return true iff the given clarification is a clarification for
 /// any of the given license files
-fn clarification_for_existing_license(
-    file_clarification: &ClarificationFile,
-    licenses: &[LicenseFile],
-) -> bool {
+fn clarification_for_existing_license(file_clarification: &ClarificationFile, licenses: &[LicenseFile]) -> bool {
     licenses.iter().any(|l| {
         file_clarification
             .path
@@ -361,12 +349,7 @@ fn collect_krate_licenses(
 
     let mut packages = Vec::new();
 
-    for KrateLicense {
-        krate,
-        lic_info,
-        license_files,
-    } in g.gather(krates, config, Some(c))
-    {
+    for KrateLicense { krate, lic_info, license_files } in g.gather(krates, config, Some(c)) {
         let license = match &lic_info {
             LicenseInfo::Expr(expr) => {
                 let licenses_in_top_level_expr = licenses_in_expr(expr);
@@ -380,15 +363,15 @@ fn collect_krate_licenses(
                 }
 
                 Some(expr.clone().into())
-            }
+            },
             LicenseInfo::Unknown => {
                 tracing::warn!("crate '{krate}' has unknown license");
                 None
-            }
+            },
             LicenseInfo::Ignore => {
                 // private/proprietary dependency (with publish = false in Cargo.toml)
                 continue;
-            }
+            },
         };
 
         let mut lfiles = vec![];
@@ -396,12 +379,9 @@ fn collect_krate_licenses(
             let name = l.path.file_name().unwrap().to_owned();
 
             match l.kind {
-                LicenseFileKind::Text(text) | LicenseFileKind::AddendumText(text, _) => lfiles
-                    .push(LicenseFile {
-                        name,
-                        spdx: Some(l.license_expr.into()),
-                        text,
-                    }),
+                LicenseFileKind::Text(text) | LicenseFileKind::AddendumText(text, _) => {
+                    lfiles.push(LicenseFile { name, spdx: Some(l.license_expr.into()), text })
+                },
                 LicenseFileKind::Header => {
                     let license_path = if l.path.is_absolute() {
                         l.path.to_owned()
@@ -411,16 +391,12 @@ fn collect_krate_licenses(
 
                     let name = license_path.file_name().unwrap().to_owned();
                     match std::fs::read_to_string(&license_path) {
-                        Ok(text) => lfiles.push(LicenseFile {
-                            name,
-                            spdx: Some(l.license_expr.into()),
-                            text,
-                        }),
+                        Ok(text) => lfiles.push(LicenseFile { name, spdx: Some(l.license_expr.into()), text }),
                         Err(e) => {
                             tracing::warn!("Unable to read license file {license_path}: {e:#}")
-                        }
+                        },
                     }
-                }
+                },
             }
         }
 
