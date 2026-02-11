@@ -185,17 +185,24 @@ pub fn augment_licenses(
                 );
             }
 
+            for invalid_clarification in clarify.files.iter().filter(|c| !clarification_for_existing_license(c, &pkg.license_files)) {
+                tracing::error!(
+                    "Found clarification for file {} that does not exist",
+                    invalid_clarification.path,
+                );
+            }
+
             pkg.license_spdx = Some(clarify.license.clone().into());
 
             pkg.license_files.retain_mut(|l| {
-                let Some(clarify) = select_file_license_clarification(clarify, &l.name) else {
+                let Some(file_clarify) = select_file_license_clarification(clarify, &l.name) else {
                     // files does not appear in clarification, we can ignore it
                     return false;
                 };
 
-                l.spdx = clarify.license.clone().map(Into::into);
+                l.spdx = file_clarify.license.clone().map(Into::into);
 
-                if let Err(e) = validate_sha256(&l.text, &clarify.checksum) {
+                if let Err(e) = validate_sha256(&l.text, &file_clarify.checksum) {
                     tracing::error!(
                         "Unable to validate clarification for {} of '{} {}': {}",
                         l.name,
@@ -289,6 +296,18 @@ fn select_file_license_clarification<'c>(
     license_name: &str,
 ) -> Option<&'c ClarificationFile> {
     clarification.files.iter().find(|f| f.path == license_name)
+}
+
+fn clarification_for_existing_license(
+    file_clarification: &ClarificationFile,
+    licenses: &[LicenseFile],
+) -> bool {
+    licenses.iter().any(|l| {
+        file_clarification
+            .path
+            .file_name()
+            .is_some_and(|file_name| file_name == l.name)
+    })
 }
 
 /// Minimize the license requirements for the packages, based on preferences in the configuration.
