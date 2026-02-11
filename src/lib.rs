@@ -97,7 +97,9 @@ impl Serialize for Expression {
     }
 }
 
-fn deserialize_expression<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Expression>, D::Error> {
+fn deserialize_expression<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Expression>, D::Error> {
     match Option::<Expression>::deserialize(deserializer) {
         Err(_) => Ok(None),
         Ok(opt) => Ok(opt),
@@ -148,7 +150,11 @@ pub fn get_all_licenses<P: AsRef<Utf8Path>>(
         false,
         features,
         false,
-        LockOptions { offline: false, frozen: false, locked: true },
+        LockOptions {
+            offline: false,
+            frozen: false,
+            locked: true,
+        },
         config,
         &[],
     )
@@ -172,7 +178,7 @@ pub fn augment_licenses(
 
         if let Some(clarify) = clarify {
             if !clarify.git.is_empty() {
-                tracing::warn!(
+                tracing::error!(
                     "Unsupported git clarification for '{} {}', use files clarification instead",
                     pkg.package_name,
                     pkg.package_version
@@ -180,6 +186,27 @@ pub fn augment_licenses(
             }
 
             pkg.license_spdx = Some(clarify.license.clone().into());
+
+            pkg.license_files.retain_mut(|l| {
+                let Some(clarify) = select_file_license_clarification(clarify, &l.name) else {
+                    // files does not appear in clarification, we can ignore it
+                    return false;
+                };
+
+                l.spdx = clarify.license.clone().map(Into::into);
+
+                if let Err(e) = validate_sha256(&l.text, &clarify.checksum) {
+                    tracing::error!(
+                        "Unable to validate clarification for {} of '{} {}': {}",
+                        l.name,
+                        pkg.package_name,
+                        pkg.package_version,
+                        e
+                    );
+                }
+
+                true
+            });
         } else if pkg.license_spdx.is_none() {
             tracing::warn!(
                 "No combined license SPDX available for '{} {}'",
@@ -188,56 +215,41 @@ pub fn augment_licenses(
             );
         }
 
-        for l in &mut pkg.license_files {
-            if let Some(clarify) = select_file_license_clarification(clarify, &l.name) {
-                l.spdx = clarify.license.clone().map(Into::into);
+        // use text analysis to try to detect SPDX for licenses with still unspecified SPDX expressions
+        for l in pkg.license_files.iter_mut().filter(|l| l.spdx.is_none()) {
+            let text = l.text.as_str().into();
+            let analysis = license_store.analyze(&text);
 
-                if let Err(e) = validate_sha256(&l.text, &clarify.checksum) {
-                    tracing::warn!(
-                        "Unable to validate clarification for {} of '{} {}': {}",
-                        l.name,
-                        pkg.package_name,
-                        pkg.package_version,
-                        e
-                    );
-                }
+            if analysis.score < 0.95 {
+                tracing::warn!(
+                    "Low confidence of {} for {} on license file SPDX detection for {} of '{} {}'",
+                    analysis.score,
+                    analysis.name,
+                    l.name,
+                    pkg.package_name,
+                    pkg.package_version
+                );
             }
 
-            if l.spdx.is_none() {
-                let text = l.text.as_str().into();
-                let analysis = license_store.analyze(&text);
+            match Expression::from_str(analysis.name) {
+                Ok(file_spdx) => {
+                    if pkg
+                        .license_spdx
+                        .as_ref()
+                        .is_some_and(|pkg_spdx| !spdx_any_in_common(pkg_spdx, &file_spdx))
+                    {
+                        tracing::warn!(
+                            "License detection of file {} detected as {} for '{} {}' is probably wrong: package license and file license have nothing in common",
+                            l.name,
+                            file_spdx,
+                            pkg.package_name,
+                            pkg.package_version
+                        );
+                    }
 
-                if analysis.score < 0.95 {
-                    tracing::warn!(
-                        "Low confidence of {} for {} on license file SPDX detection for {} of '{} {}'",
-                        analysis.score,
-                        analysis.name,
-                        l.name,
-                        pkg.package_name,
-                        pkg.package_version
-                    );
+                    l.spdx = Some(file_spdx)
                 }
-
-                match Expression::from_str(analysis.name) {
-                    Ok(file_spdx) => {
-                        if pkg
-                            .license_spdx
-                            .as_ref()
-                            .is_some_and(|pkg_spdx| !spdx_any_in_common(pkg_spdx, &file_spdx))
-                        {
-                            tracing::warn!(
-                                "License detection of file {} detected as {} for '{} {}' is probably wrong: package license and file license have nothing in common",
-                                l.name,
-                                file_spdx,
-                                pkg.package_name,
-                                pkg.package_version
-                            );
-                        }
-
-                        l.spdx = Some(file_spdx)
-                    },
-                    Err(e) => tracing::warn!("License analysis yielded invalid license: {e}"),
-                }
+                Err(e) => tracing::error!("License analysis yielded invalid license: {e}"),
             }
         }
 
@@ -265,15 +277,18 @@ fn spdx_any_in_common(expr1: &Expression, expr2: &Expression) -> bool {
         .any(|req1| expr2.requirements().any(|req2| req1 == req2))
 }
 
-fn select_clarification<'cfg>(package_name: &str, config: &'cfg Config) -> Option<&'cfg Clarification> {
+fn select_clarification<'cfg>(
+    package_name: &str,
+    config: &'cfg Config,
+) -> Option<&'cfg Clarification> {
     config.crates.get(package_name)?.clarify.as_ref()
 }
 
 fn select_file_license_clarification<'c>(
-    clarification: Option<&'c Clarification>,
+    clarification: &'c Clarification,
     license_name: &str,
 ) -> Option<&'c ClarificationFile> {
-    clarification?.files.iter().find(|f| f.path == license_name)
+    clarification.files.iter().find(|f| f.path == license_name)
 }
 
 /// Minimize the license requirements for the packages, based on preferences in the configuration.
@@ -321,7 +336,12 @@ fn collect_krate_licenses(
 
     let mut packages = Vec::new();
 
-    for KrateLicense { krate, lic_info, license_files } in g.gather(krates, config, Some(c)) {
+    for KrateLicense {
+        krate,
+        lic_info,
+        license_files,
+    } in g.gather(krates, config, Some(c))
+    {
         let license = match &lic_info {
             LicenseInfo::Expr(expr) => {
                 let licenses_in_top_level_expr = licenses_in_expr(expr);
@@ -335,15 +355,15 @@ fn collect_krate_licenses(
                 }
 
                 Some(expr.clone().into())
-            },
+            }
             LicenseInfo::Unknown => {
                 tracing::warn!("crate '{krate}' has unknown license");
                 None
-            },
+            }
             LicenseInfo::Ignore => {
                 // private/proprietary dependency (with publish = false in Cargo.toml)
                 continue;
-            },
+            }
         };
 
         let mut lfiles = vec![];
@@ -351,9 +371,12 @@ fn collect_krate_licenses(
             let name = l.path.file_name().unwrap().to_owned();
 
             match l.kind {
-                LicenseFileKind::Text(text) | LicenseFileKind::AddendumText(text, _) => {
-                    lfiles.push(LicenseFile { name, spdx: Some(l.license_expr.into()), text })
-                },
+                LicenseFileKind::Text(text) | LicenseFileKind::AddendumText(text, _) => lfiles
+                    .push(LicenseFile {
+                        name,
+                        spdx: Some(l.license_expr.into()),
+                        text,
+                    }),
                 LicenseFileKind::Header => {
                     let license_path = if l.path.is_absolute() {
                         l.path.to_owned()
@@ -363,10 +386,16 @@ fn collect_krate_licenses(
 
                     let name = license_path.file_name().unwrap().to_owned();
                     match std::fs::read_to_string(&license_path) {
-                        Ok(text) => lfiles.push(LicenseFile { name, spdx: Some(l.license_expr.into()), text }),
-                        Err(e) => tracing::warn!("Unable to read license file {license_path}: {e:#}"),
+                        Ok(text) => lfiles.push(LicenseFile {
+                            name,
+                            spdx: Some(l.license_expr.into()),
+                            text,
+                        }),
+                        Err(e) => {
+                            tracing::warn!("Unable to read license file {license_path}: {e:#}")
+                        }
                     }
-                },
+                }
             }
         }
 
